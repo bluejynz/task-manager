@@ -7,3 +7,6 @@ coverage/
 !.env.example
 npm-debug.log*
 context.md
+AGENTS.md
+CLAUDE.md
+.cursor/
