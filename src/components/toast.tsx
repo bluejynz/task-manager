@@ -1,11 +1,37 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 export type ToastMessage = { type: "success" | "error"; message: string };
+type ToastNotification = ToastMessage & { id: number };
+
+const ToastContext = createContext<((feedback: ToastMessage | null) => void) | null>(null);
+
+export function ToastProvider({ children }: { children: ReactNode }) {
+  const [feedback, setFeedback] = useState<ToastNotification | null>(null);
+  const sequence = useRef(0);
+  const notify = useCallback((message: ToastMessage | null) => {
+    setFeedback(message ? { ...message, id: ++sequence.current } : null);
+  }, []);
+  const dismiss = useCallback(() => setFeedback(null), []);
+
+  // Layout state survives navigation from a saved form back to the task list.
+  return (
+    <ToastContext.Provider value={notify}>
+      {children}
+      <Toast feedback={feedback} onDismiss={dismiss} />
+    </ToastContext.Provider>
+  );
+}
+
+export function useToast() {
+  const notify = useContext(ToastContext);
+  if (!notify) throw new Error("useToast must be used inside ToastProvider.");
+  return notify;
+}
 
 export function Toast({ feedback, onDismiss }: {
-  feedback: ToastMessage | null;
+  feedback: ToastNotification | null;
   onDismiss: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
@@ -18,13 +44,6 @@ export function Toast({ feedback, onDismiss }: {
     }
   }, [feedback]);
 
-  useEffect(() => {
-    // Errors stay visible; successful notices pause while being read or focused.
-    if (feedback?.type !== "success" || hovered || focused) return;
-    const timer = window.setTimeout(onDismiss, 5_000);
-    return () => window.clearTimeout(timer);
-  }, [feedback, hovered, focused, onDismiss]);
-
   return (
     <div className="pointer-events-none fixed bottom-6 left-4 right-4 z-50 sm:left-auto sm:right-6 sm:w-96">
       <div role="status" aria-atomic="true">
@@ -36,11 +55,11 @@ export function Toast({ feedback, onDismiss }: {
     </div>
   );
 
-  function renderNotice(notice: ToastMessage) {
+  function renderNotice(notice: ToastNotification) {
     const success = notice.type === "success";
     return (
       <div
-        className={`pointer-events-auto flex items-start gap-3 rounded-xl border bg-surface p-4 shadow-lg ${success ? "border-success/30" : "border-danger/30"}`}
+        className={`pointer-events-auto relative flex items-start gap-3 rounded-xl border bg-surface p-4 shadow-lg ${success ? "border-success/30" : "border-danger/30"}`}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onFocus={() => setFocused(true)}
@@ -60,6 +79,17 @@ export function Toast({ feedback, onDismiss }: {
         >
           <span aria-hidden="true">×</span>
         </button>
+        {success && (
+          <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-1 overflow-hidden rounded-b-xl bg-success-soft">
+            <div
+              key={notice.id}
+              className="toast-progress h-full w-full origin-left bg-success"
+              style={{ animationPlayState: hovered || focused ? "paused" : "running" }}
+              // One animation controls both the visual timer and dismissal.
+              onAnimationEnd={onDismiss}
+            />
+          </div>
+        )}
       </div>
     );
   }

@@ -4,12 +4,15 @@ import { z } from "zod";
 
 const t = initTRPC.create({
   errorFormatter({ shape, error }) {
+    const zodError: { formErrors: string[]; fieldErrors: Record<string, string[] | undefined> } | null = (
+      error.cause instanceof z.ZodError ? z.flattenError(error.cause) : null
+    );
     return {
       ...shape,
       data: {
         ...shape.data,
         // Field errors can be shown by forms without parsing an error message.
-        zodError: error.cause instanceof z.ZodError ? z.flattenError(error.cause) : null,
+        zodError,
       },
     };
   },

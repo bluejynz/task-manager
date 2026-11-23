@@ -1,8 +1,9 @@
 "use client";
 
 import { useIsMutating } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Toast, type ToastMessage } from "@/components/toast";
+import Link from "next/link";
+import { useEffect, useRef } from "react";
+import { useToast, type ToastMessage } from "@/components/toast";
 import { taskListOptions, taskMutationFilter, trpc, type TaskPage } from "@/trpc/client";
 
 const dateFormat = new Intl.DateTimeFormat("pt-BR", {
@@ -33,23 +34,30 @@ function TaskCard({ task, onFeedback }: {
       <p className="mt-3 flex-1 whitespace-pre-wrap break-words text-base leading-7 text-muted">{task.descricao || "Sem descrição."}</p>
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
         <time dateTime={new Date(task.dataCriacao).toISOString()} className="text-sm text-muted">{dateFormat.format(task.dataCriacao)}</time>
-        <button
-          type="button"
-          disabled={deletion.isPending}
-          onClick={() => deletion.mutate({ id: task.id })}
-          aria-label={`${deletion.isPending ? "Excluindo" : "Excluir"} ${task.titulo}`}
-          className="rounded-lg px-3 py-2 text-sm font-semibold text-danger transition-colors hover:bg-danger-soft disabled:cursor-wait disabled:opacity-60"
-        >
-          {deletion.isPending ? "Excluindo…" : "Excluir"}
-        </button>
+        <div className="flex items-center gap-1">
+          <Link
+            href={`/tasks/${task.id}/edit`}
+            prefetch={false}
+            aria-label={`Editar ${task.titulo}`}
+            className="rounded-lg px-3 py-2 text-sm font-semibold text-muted transition-colors hover:bg-canvas hover:text-ink"
+          >Editar</Link>
+          <button
+            type="button"
+            disabled={deletion.isPending}
+            onClick={() => deletion.mutate({ id: task.id })}
+            aria-label={`${deletion.isPending ? "Excluindo" : "Excluir"} ${task.titulo}`}
+            className="rounded-lg px-3 py-2 text-sm font-semibold text-danger transition-colors hover:bg-danger-soft disabled:cursor-wait disabled:opacity-60"
+          >
+            {deletion.isPending ? "Excluindo…" : "Excluir"}
+          </button>
+        </div>
       </div>
     </li>
   );
 }
 
 export function TaskList({ initialData, fetchedAt }: { initialData: TaskPage; fetchedAt: number }) {
-  const [feedback, setFeedback] = useState<ToastMessage | null>(null);
-  const dismissFeedback = useCallback(() => setFeedback(null), []);
+  const notify = useToast();
   const sentinel = useRef<HTMLDivElement>(null);
   const mutations = useIsMutating(taskMutationFilter);
   const list = trpc.task.list.useInfiniteQuery({ limit: 8 }, {
@@ -83,9 +91,8 @@ export function TaskList({ initialData, fetchedAt }: { initialData: TaskPage; fe
     <section aria-labelledby="task-heading" className="mt-12">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h2 id="task-heading" className="text-2xl font-bold">Tarefas <span className="ml-2 text-lg font-medium text-muted">{total}</span></h2>
-        <span className="rounded-full border border-line bg-surface px-4 py-2 text-sm text-muted">Dados fictícios · armazenamento em memória</span>
+        <Link href="/tasks/new" prefetch={false} className="rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary-hover">Nova tarefa</Link>
       </div>
-      <Toast feedback={feedback} onDismiss={dismissFeedback} />
       {needsRefresh && <p role="status" className="mb-4 rounded-xl border border-line bg-surface p-4 text-sm text-muted">As tarefas mudaram durante a navegação. Atualizando a lista…</p>}
       {list.isError && (
         <div role="alert" className="mb-4 rounded-xl border border-danger/20 bg-danger-soft p-4 text-sm text-danger">
@@ -102,10 +109,11 @@ export function TaskList({ initialData, fetchedAt }: { initialData: TaskPage; fe
         <div className="rounded-xl border border-line bg-surface px-6 py-14 text-center">
           <h3 className="text-xl font-semibold">Nenhuma tarefa por aqui.</h3>
           <p className="mt-3 text-base text-muted">Suas tarefas aparecerão neste espaço.</p>
+          <Link href="/tasks/new" prefetch={false} className="mt-6 inline-block rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-white hover:bg-primary-hover">Criar primeira tarefa</Link>
         </div>
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2">
-          {items.map((task) => <TaskCard key={task.id} task={task} onFeedback={setFeedback} />)}
+          {items.map((task) => <TaskCard key={task.id} task={task} onFeedback={notify} />)}
         </ul>
       )}
       <div ref={sentinel} className="mt-6 flex min-h-16 flex-col items-center gap-3 text-center text-sm text-muted">

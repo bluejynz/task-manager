@@ -9,7 +9,17 @@ import type { AppRouter } from "@/server/trpc/root";
 
 export const trpc = createTRPCReact<AppRouter>();
 export type TaskPage = inferRouterOutputs<AppRouter>["task"]["list"];
+export type Task = inferRouterOutputs<AppRouter>["task"]["byId"];
 export const taskMutationFilter = { mutationKey: getQueryKey(trpc.task) };
+
+export function taskDetailOptions(initialData: Task) {
+  return {
+    initialData,
+    // Next.js can restore an old RSC payload on Back, even with force-dynamic.
+    refetchOnMount: "always" as const,
+    refetchOnWindowFocus: false,
+  };
+}
 
 export function selectTaskPages<TPageParam>(data: InfiniteData<TaskPage, TPageParam>) {
   const needsRefresh = data.pages.some((page) => page.revision !== data.pages[0]?.revision);

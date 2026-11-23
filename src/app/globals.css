@@ -15,3 +15,18 @@
     @apply outline outline-2 outline-offset-4 outline-primary;
   }
 }
+
+@keyframes toast-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+.toast-progress {
+  animation: toast-fill 5s linear both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-progress {
+    animation-timing-function: steps(1, end);
+  }
+}

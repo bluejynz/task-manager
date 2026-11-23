@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { InfiniteQueryObserver } from "@tanstack/react-query";
+import { InfiniteQueryObserver, QueryObserver } from "@tanstack/react-query";
 import { getMutationKey, getQueryKey } from "@trpc/react-query";
-import { createQueryClient, taskListOptions, trpc, type TaskPage } from "@/trpc/client";
+import { createQueryClient, taskDetailOptions, taskListOptions, trpc, type Task, type TaskPage } from "@/trpc/client";
 
 function fixture() {
   let revision = 0;
@@ -33,8 +33,8 @@ function fixture() {
   };
   const observer = new InfiniteQueryObserver(queryClient, options);
   const unsubscribe = observer.subscribe(() => {});
-  const mutate = (mutationFn: () => Promise<void>) => queryClient.getMutationCache()
-    .build(queryClient, { mutationFn, mutationKey: getMutationKey(trpc.task.delete) }).execute(undefined);
+  const mutate = (mutationFn: () => Promise<void>, mutationKey = getMutationKey(trpc.task.delete)) => queryClient.getMutationCache()
+    .build(queryClient, { mutationFn, mutationKey }).execute(undefined);
 
   return {
     queryClient, observer, requests, options, mutate, page,
@@ -74,7 +74,7 @@ describe("task list cache", () => {
       await f.mutate(async () => f.replaceTasks([
         { id: "new", titulo: "New task", dataCriacao: 101 },
         ...f.tasks(),
-      ]));
+      ]), getMutationKey(trpc.task.create));
       assert.deepEqual(f.requests, [0, 8]);
       await f.observer.fetchNextPage();
       const ids = f.observer.getCurrentResult().data!.pages.flatMap((p) => p.items.map((task) => task.id));
@@ -96,6 +96,22 @@ describe("task list cache", () => {
       assert.deepEqual(result.data!.pages[0].items, []);
       assert.equal(result.data!.pages[0].total, 0);
       assert.equal(result.hasNextPage, false);
+    } finally {
+      f.close();
+    }
+  });
+
+  it("refreshes list data and marks a cached detail stale after editing", async () => {
+    const f = fixture();
+    try {
+      const task = f.tasks()[0];
+      const detailKey = getQueryKey(trpc.task.byId, { id: task.id }, "query");
+      f.queryClient.setQueryData(detailKey, task);
+      await f.mutate(async () => f.replaceTasks(f.tasks().map((item) => (
+        item.id === task.id ? { ...item, titulo: "Edited task" } : item
+      ))), getMutationKey(trpc.task.update));
+      assert.equal(f.observer.getCurrentResult().data!.pages[0].items[0].titulo, "Edited task");
+      assert.equal(f.queryClient.getQueryState(detailKey)?.isInvalidated, true);
     } finally {
       f.close();
     }
@@ -229,4 +245,73 @@ describe("task list cache", () => {
       }
     });
   }
+});
+
+describe("edit task cache", () => {
+  it("revalidates on every mount even when history supplies an old SSR snapshot", { timeout: 2_000 }, async () => {
+    const queryClient = createQueryClient();
+    const original: Task = { id: "history-test", titulo: "Before edit", dataCriacao: 1 };
+    let savedTitle = "After edit";
+    let requests = 0;
+    const options = {
+      queryKey: getQueryKey(trpc.task.byId, { id: original.id }, "query"),
+      queryFn: async () => { requests++; return { ...original, titulo: savedTitle }; },
+      ...taskDetailOptions(original),
+      // Revalidation must not depend on cached data being considered stale.
+      staleTime: Infinity,
+    };
+
+    try {
+      for (const expectedTitle of ["After edit", "Edited in another tab"]) {
+        savedTitle = expectedTitle;
+        const observer = new QueryObserver(queryClient, options);
+        assert.equal(observer.getCurrentResult().isFetchedAfterMount, false);
+        try {
+          await new Promise<void>((resolve) => {
+            const unsubscribe = observer.subscribe((result) => {
+              if (result.isSuccess && result.isFetchedAfterMount && !result.isFetching) {
+                unsubscribe();
+                resolve();
+              }
+            });
+          });
+          assert.equal(observer.getCurrentResult().data!.titulo, expectedTitle);
+        } finally {
+          observer.destroy();
+        }
+      }
+      assert.equal(requests, 2);
+    } finally {
+      queryClient.clear();
+    }
+  });
+
+  it("reports a failed revalidation instead of treating an old snapshot as verified", { timeout: 2_000 }, async () => {
+    const queryClient = createQueryClient();
+    const original: Task = { id: "removed-task", titulo: "Removed", dataCriacao: 1 };
+    const observer = new QueryObserver(queryClient, {
+      queryKey: getQueryKey(trpc.task.byId, { id: original.id }, "query"),
+      queryFn: async (): Promise<Task> => { throw new Error("Task no longer exists"); },
+      ...taskDetailOptions(original),
+      retry: false,
+    });
+    try {
+      await new Promise<void>((resolve) => {
+        const unsubscribe = observer.subscribe((result) => {
+          if (result.isError && !result.isFetching) {
+            unsubscribe();
+            resolve();
+          }
+        });
+      });
+      const result = observer.getCurrentResult();
+      assert.equal(result.isFetchedAfterMount, true);
+      assert.equal(result.isSuccess, false);
+      // Query retains cached data on error; the form must wait for a success.
+      assert.equal(result.data!.titulo, original.titulo);
+    } finally {
+      observer.destroy();
+      queryClient.clear();
+    }
+  });
 });
