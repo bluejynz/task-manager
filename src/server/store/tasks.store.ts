@@ -7,7 +7,7 @@ export type Task = {
   dataCriacao: number;
 };
 
-export type TaskInput = Pick<Task, "titulo" | "descricao">;
+export type TaskInput = Pick<Task, "titulo"> & Partial<Pick<Task, "descricao">>;
 export type TaskPage = { items: Task[]; nextCursor?: number; total: number };
 
 const seedTitles = [
@@ -61,7 +61,12 @@ export const tasksStore = {
     return task ? { ...task } : undefined;
   },
   create(input: TaskInput): Task {
-    const task: Task = { ...input, id: crypto.randomUUID(), dataCriacao: Date.now() };
+    const task: Task = {
+      id: crypto.randomUUID(),
+      titulo: input.titulo,
+      descricao: input.descricao,
+      dataCriacao: Date.now(),
+    };
     tasks.push(task);
     return { ...task };
   },
