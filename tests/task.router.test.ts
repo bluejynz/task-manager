@@ -54,6 +54,7 @@ describe("task API", () => {
     await assert.rejects(caller.task.update({ id: existing.id, titulo: "   " }), hasError("BAD_REQUEST"));
     assert.deepEqual(await caller.task.byId({ id: existing.id }), existing);
     assert.equal((await caller.task.list()).total, before.total);
+    assert.equal((await caller.task.list()).revision, before.revision);
   });
 
   it("trims titles, accepts omitted descriptions, and generates identity on the server", async () => {
@@ -87,6 +88,26 @@ describe("task API", () => {
   it("rejects malformed UUIDs", async () => {
     await assert.rejects(caller.task.byId({ id: "invalid" }), hasError("BAD_REQUEST"));
     await assert.rejects(caller.task.delete({ id: "" }), hasError("BAD_REQUEST"));
+  });
+
+  it("changes the list revision only on successful writes", async () => {
+    const before = (await caller.task.list()).revision;
+    const task = await caller.task.create({ titulo: "Revision test" });
+    try {
+      const created = (await caller.task.list()).revision;
+      assert.notEqual(created, before);
+      await caller.task.update({ id: task.id, titulo: "Updated revision" });
+      const updated = (await caller.task.list()).revision;
+      assert.notEqual(updated, created);
+      assert.equal((await caller.task.list()).revision, updated);
+    } finally {
+      const beforeDelete = (await caller.task.list()).revision;
+      await caller.task.delete({ id: task.id });
+      const afterDelete = (await caller.task.list()).revision;
+      assert.notEqual(afterDelete, beforeDelete);
+      await assert.rejects(caller.task.delete({ id: task.id }), hasError("NOT_FOUND"));
+      assert.equal((await caller.task.list()).revision, afterDelete);
+    }
   });
 
   it("keeps callers from mutating the store through returned objects", async () => {

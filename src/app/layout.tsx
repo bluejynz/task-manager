@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Plus_Jakarta_Sans } from "next/font/google";
+import { TRPCProvider } from "@/trpc/client";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -13,7 +14,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="pt-BR">
-      <body className={`${inter.variable} ${jakarta.variable}`}>{children}</body>
+      <body className={`${inter.variable} ${jakarta.variable}`}><TRPCProvider>{children}</TRPCProvider></body>
     </html>
   );
 }

@@ -8,7 +8,7 @@ export type Task = {
 };
 
 export type TaskInput = Pick<Task, "titulo"> & Partial<Pick<Task, "descricao">>;
-export type TaskPage = { items: Task[]; nextCursor?: number; total: number };
+export type TaskPage = { items: Task[]; nextCursor?: number; total: number; revision: string };
 
 const seedTitles = [
   "Revisar o planejamento da semana",
@@ -41,10 +41,14 @@ function createSeed(): Task[] {
   }));
 }
 
-const globalStore = globalThis as typeof globalThis & { taskManagerTasks?: Task[] };
+const globalStore = globalThis as typeof globalThis & {
+  taskManagerTasks?: Task[];
+  taskManagerRevision?: string;
+};
 
 // Keep the same array across development HMR; restarting the process resets the data.
 const tasks = (globalStore.taskManagerTasks ??= createSeed());
+globalStore.taskManagerRevision ??= crypto.randomUUID();
 
 export const tasksStore = {
   list({ limit = 8, cursor = 0 }: { limit?: number; cursor?: number } = {}): TaskPage {
@@ -54,7 +58,8 @@ export const tasksStore = {
     const sorted = [...tasks].sort((a, b) => b.dataCriacao - a.dataCriacao);
     const items = sorted.slice(cursor, cursor + limit).map((task) => ({ ...task }));
     const nextCursor = cursor + items.length;
-    return { items, nextCursor: nextCursor < tasks.length ? nextCursor : undefined, total: tasks.length };
+    // A revision lets clients detect pages read before and after another tab writes.
+    return { items, nextCursor: nextCursor < tasks.length ? nextCursor : undefined, total: tasks.length, revision: globalStore.taskManagerRevision! };
   },
   byId(id: string): Task | undefined {
     const task = tasks.find((item) => item.id === id);
@@ -68,18 +73,21 @@ export const tasksStore = {
       dataCriacao: Date.now(),
     };
     tasks.push(task);
+    globalStore.taskManagerRevision = crypto.randomUUID();
     return { ...task };
   },
   update(id: string, input: TaskInput): Task | undefined {
     const index = tasks.findIndex((task) => task.id === id);
     if (index === -1) return undefined;
     tasks[index] = { ...tasks[index], titulo: input.titulo, descricao: input.descricao };
+    globalStore.taskManagerRevision = crypto.randomUUID();
     return { ...tasks[index] };
   },
   delete(id: string): boolean {
     const index = tasks.findIndex((task) => task.id === id);
     if (index === -1) return false;
     tasks.splice(index, 1);
+    globalStore.taskManagerRevision = crypto.randomUUID();
     return true;
   },
 };
